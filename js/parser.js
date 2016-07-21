@@ -1,4 +1,7 @@
-var parser = (function() {
+/**
+ * .srt Parser
+ */
+export var parser = (function() {
     var pItems = {};
 
     /**
