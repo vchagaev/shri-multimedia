@@ -21,11 +21,15 @@
   "homepage": "https://github.com/vchagaev/shri-multimedia#readme",
   "devDependencies": {
     "babel-core": "^6.11.4",
+    "babel-loader": "^6.2.4",
     "babel-preset-es2015": "^6.9.0",
     "babel-register": "^6.9.0",
     "eslint": "^3.1.1",
     "eslint-config-loris": "^5.1.0",
     "gulp": "^3.9.1",
-    "normalize.css": "^4.2.0"
+    "gulp-plumber": "^1.1.0",
+    "normalize.css": "^4.2.0",
+    "webpack": "^1.13.1",
+    "webpack-stream": "^3.2.0"
   }
 }

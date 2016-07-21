@@ -1,16 +1,38 @@
-document.addEventListener('DOMContentLoaded', onDOMContentLoaded);
+import {
+    fillTextMultiLine,
+    loadVideo,
+    loadAudio,
+    loadSubs,
+    loadImg
+} from './helpers';
 
-function onDOMContentLoaded() {
-    window.KinoPlayer = new KinoPlayer('canvasOne', 'video/sherlock', 'audio/taper', 'subs/subs.srt');
-}
-
-class KinoPlayer {
+/**
+ * KinoPlayer is canvas video player with adding old movie effects.
+ */
+export default class KinoPlayer {
+    /**
+     * Create a KinoPlayer instance
+     * @param {string} canvasId - canvas element id
+     * @param {string} videoSrc - url to video without extension
+     * @param {string} audioSrc - url to audio without extension
+     * @param {string} subSrc - url to srt subtitles
+     */
     constructor(canvasId, videoSrc, audioSrc, subSrc) {
         this.canvasSettings = {
             id: canvasId,
             firstCompositeOperation: 'color',
             secondCompositeOperation: 'multiply',
-            fillStyle: '#FFFFFF'
+            fillStyle: '#FFFFFF',
+            font: '44px Oranienbaum',
+            buttonWait: 5,
+            bW: 32, // control button width
+            bH: 32, // control button height
+            playX: 10, // offset x for play button
+            playY: 678, // offset y for play button
+            pauseX: 50, // offset x for pause button
+            pauseY: 678, // offset x for pause button
+            stopX: 90, // offset x for stop button
+            stopY: 678 // offset x for stop button
         };
         this.audioSettings = {
             src: audioSrc,
@@ -33,11 +55,11 @@ class KinoPlayer {
             src: 'imgs/videobuttons.png'
         };
         Promise.all([
-            this._loadVideo(this.videoSettings),
-            this._loadVideo(this.oldVideoSettings),
-            this._loadAudio(this.audioSettings),
-            this._loadSubs(this.subSettings),
-            this._loadImg(this.controlsImgSettings)
+            loadVideo(this.videoSettings),
+            loadVideo(this.oldVideoSettings),
+            loadAudio(this.audioSettings),
+            loadSubs(this.subSettings),
+            loadImg(this.controlsImgSettings)
         ]).then(() => {
             this._initCanvas(this.canvasSettings);
             this._initMainVideo(this.videoSettings);
@@ -45,6 +67,10 @@ class KinoPlayer {
         });
     }
 
+    /**
+     * Run game loop with request animation frame
+     * @private
+     */
     _runLoop() {
         this._drawScreen();
         requestAnimationFrame(() => {
@@ -52,17 +78,25 @@ class KinoPlayer {
         });
     }
 
+    /**
+     * Draw combined canvas image
+     * @private
+     */
     _drawScreen() {
         const context = this.canvasSettings.context;
         const videoSettings = this.videoSettings;
         const subSettings = this.subSettings;
         const canvasSettings = this.canvasSettings;
         const imgSettings = this.controlsImgSettings;
+
+        // Video or subtitles
         if (!videoSettings.subPause) {
             context.drawImage(this.videoSettings.elem, 0, 0);
         } else {
-            KinoPlayer._fillTextMultiLine(context, subSettings.curSubText, subSettings.leftMargin, subSettings.topMargin);
+            fillTextMultiLine(context, subSettings.curSubText, subSettings.leftMargin, subSettings.topMargin);
         }
+
+        // Use Composite operation for effects
         const oldOperation = context.globalCompositeOperation;
         context.globalCompositeOperation = canvasSettings.firstCompositeOperation;
         context.fillStyle = canvasSettings.fillStyle;
@@ -70,6 +104,8 @@ class KinoPlayer {
         context.globalCompositeOperation = canvasSettings.secondCompositeOperation;
         context.drawImage(this.oldVideoSettings.elem, 0, 0);
         context.globalCompositeOperation = oldOperation;
+
+        // Draw buttons depending on video status
         if (!videoSettings.elem.paused || (videoSettings.subPause && !videoSettings.forcePause)) {
             context.drawImage(imgSettings.elem, 0, 32, canvasSettings.bW, canvasSettings.bH, canvasSettings.playX,
                 canvasSettings.playY, canvasSettings.bW, canvasSettings.bH); //Play Down
@@ -94,73 +130,20 @@ class KinoPlayer {
         canvasSettings.timeWaited++;
     }
 
-    _loadVideo(settings) {
-        return new Promise((resolve, reject) => {
-            settings.elem = document.createElement('video');
-            settings.wrapper = document.createElement('div');
-            document.body.appendChild(settings.wrapper);
-            settings.wrapper.appendChild(settings.elem);
-            settings.wrapper.setAttribute('style', 'display:none;');
-            settings.elem.loop = settings.loop;
-            settings.elem.muted = true;
-            settings.ext = '.' + KinoPlayer._supportedVideoFormat(settings.elem);
-            if (settings.ext === '.') {
-                reject();
-            }
-            settings.elem.addEventListener('canplay', () => {
-                resolve();
-            }, false);
-            settings.elem.setAttribute('src', settings.src + settings.ext);
-        });
-    }
-
-    _loadAudio(settings) {
-        return new Promise((resolve, reject) => {
-            settings.elem = document.createElement('audio');
-            settings.elem.loop = settings.loop;
-            document.body.appendChild(settings.elem);
-            settings.ext = '.' + KinoPlayer._supportedAudioFormat(settings.elem);
-            if (settings.ext === '.') {
-                reject();
-            }
-            settings.elem.addEventListener('canplaythrough', () => {
-                resolve();
-            }, false);
-            settings.elem.setAttribute('src', settings.src + settings.ext);
-        });
-    }
-
-    _loadSubs(settings) {
-        return new Promise((resolve, reject) => {
-            fetch(settings.src)
-                .then((response) => {
-                    response.text().then((rawSrt) => {
-                        settings.subArray = parser.fromSrt(rawSrt, true);
-                        settings.curSubNum = 0;
-                        settings.curSubText = settings.subArray[settings.curSubNum];
-                        resolve();
-                    });
-                })
-                .catch(reject);
-        });
-    }
-
-    _loadImg(settings) {
-        return new Promise((resolve, reject) => {
-            settings.elem = new Image();
-            settings.elem.addEventListener('load', () => {
-                resolve();
-            }, false);
-            settings.elem.src = settings.src;
-        });
-    }
-
+    /**
+     * Extra initializing for main. Working with subtitles. Adding events.
+     * @param {Object} settings - main video settings
+     * @private
+     */
     _initMainVideo(settings) {
         const videoSettings = this.videoSettings;
         const subSettings = this.subSettings;
         const oldVideoSettings = this.oldVideoSettings;
         const audioSettings = this.audioSettings;
 
+        /**
+         * Play again after showing subtitles or wait if video was paused
+         */
         function afterSubs() {
             if (videoSettings.forcePause) {
                 setTimeout(afterSubs, 1000);
@@ -174,6 +157,9 @@ class KinoPlayer {
             }
         }
 
+        /**
+         * Check if it is time to show subtitles
+         */
         settings.elem.addEventListener('timeupdate', () => {
             if (subSettings.curSubNum !== undefined &&
                 videoSettings.elem.currentTime * 1000 >= subSettings.subArray[subSettings.curSubNum].endTime && !videoSettings.subPause) {
@@ -185,6 +171,9 @@ class KinoPlayer {
             }
         }, false);
 
+        /**
+         * Reset all elements when main video is ended
+         */
         settings.elem.addEventListener('ended', () => {
             oldVideoSettings.elem.pause();
             videoSettings.elem.pause();
@@ -197,26 +186,27 @@ class KinoPlayer {
         }, false);
     }
 
+    /**
+     * Canvas initializing. Adding events to video player controls.
+     * @param {object} settings - Canvas Settings
+     * @private
+     */
     _initCanvas(settings) {
         settings.canvas = document.getElementById(settings.id);
         settings.context = settings.canvas.getContext('2d');
-        settings.context.font = '44px Oranienbaum';
-        settings.buttonWait = 5;
+        settings.context.font = settings.font;
         settings.timeWaited = settings.buttonWait;
-        settings.bW = 32;
-        settings.bH = 32;
-        settings.playX = 10;
-        settings.playY = 678;
-        settings.pauseX = 50;
-        settings.pauseY = 678;
-        settings.stopX = 90;
-        settings.stopY = 678;
+
         const videoSettings = this.videoSettings;
         const audioSettings = this.audioSettings;
         const oldVideoSettings = this.oldVideoSettings;
         const subSettings = this.subSettings;
         settings.canvas.addEventListener('mouseup', eventMouseUp, false);
 
+        /**
+         * Control which button is clicked
+         * @param event
+         */
         function eventMouseUp(event) {
             if (settings.timeWaited >= settings.buttonWait) {
                 settings.timeWaited = 0;
@@ -226,9 +216,6 @@ class KinoPlayer {
                 if (event.pageX || event.pageY) {
                     x = event.pageX;
                     y = event.pageY;
-                } else {
-                    x = e.clientX + document.body.scrollLeft + document.documentElement.scrollLeft;
-                    y = e.clientY + document.body.scrollTop + document.documentElement.scrollTop;
                 }
                 x -= settings.canvas.offsetLeft;
                 y -= settings.canvas.offsetTop;
@@ -274,49 +261,8 @@ class KinoPlayer {
                         audioSettings.elem.play();
                         videoSettings.forcePause = false;
                     }
-
                 }
             }
         }
     }
-
-    static _supportedVideoFormat(video) {
-        let returnExtension = '';
-        if (video.canPlayType('video/webm') === 'probably' ||
-            video.canPlayType('video/webm') === 'maybe') {
-            returnExtension = 'webm';
-        } else if (video.canPlayType('video/mp4') === 'probably' ||
-            video.canPlayType('video/mp4') === 'maybe') {
-            returnExtension = 'mp4';
-        } else if (video.canPlayType('video/ogg') === 'probably' ||
-            video.canPlayType('video/ogg') === 'maybe') {
-            returnExtension = 'ogg';
-        }
-        return returnExtension;
-    }
-
-    static _supportedAudioFormat(audio) {
-        let returnExtension = '';
-        if (audio.canPlayType('audio/ogg') === 'probably' ||
-            audio.canPlayType('audio/ogg') === 'maybe') {
-            returnExtension = 'ogg';
-        } else if (audio.canPlayType('audio/wav') === 'probably' ||
-            audio.canPlayType('audio/wav') === 'maybe') {
-            returnExtension = 'wav';
-        } else if (audio.canPlayType('audio/mp3') === 'probably' ||
-            audio.canPlayType('audio/mp3') === 'maybe') {
-            returnExtension = 'mp3';
-        }
-        return returnExtension;
-    }
-
-    static _fillTextMultiLine(ctx, text, x, y) {
-        const lineHeight = ctx.measureText('M').width * 1.5;
-        const lines = text.split('\n');
-        for (let i = 0; i < lines.length; ++i) {
-            ctx.fillText(lines[i], x, y);
-            y += lineHeight;
-        }
-    }
-
 }
